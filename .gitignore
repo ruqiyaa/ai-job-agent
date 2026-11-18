@@ -2,3 +2,4 @@
 venv/
 sample_data/
 test_gemini.py
+*.db

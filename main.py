@@ -1,11 +1,12 @@
 from pathlib import Path
-import pymupdf
+from dotenv import load_dotenv
+from google import genai
 from docx import Document
+from db import init_db, save_candidate, get_candidate
 
 import os
 import json
-from dotenv import load_dotenv
-from google import genai
+import pymupdf
 
 
 def read_pdf(file_path):
@@ -141,5 +142,14 @@ else:
 # skills = extract_skills(resume_text)
 # print("\nSkills found: ")
 # print(skills)
+
+init_db()
 candidate_profile = analyze_resume(resume_text)
-print(json.dumps(candidate_profile, indent=4))
+candidate_id = save_candidate(
+    candidate_profile,
+    resume_path.name
+)
+saved_candidate = get_candidate(resume_path.name)
+
+print(f"candidate saved id: {candidate_id}")
+print(json.dumps(saved_candidate, indent=4))
