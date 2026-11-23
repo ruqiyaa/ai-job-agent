@@ -1,6 +1,7 @@
 
 import re
 from datetime import datetime
+import hashlib
 
 
 # Skills we know how to identify in job descriptions
@@ -188,9 +189,9 @@ def score_skills(candidate_skills, job):
     )
 
     if total_weight == 0:
-        return 20, [], [], []
+        return 25, [], [], []
 
-    score = round((matched_weight / total_weight) * 40)
+    score = round((matched_weight / total_weight) * 50)
 
     matched = sorted(
         matched_required | matched_preferred | matched_mentioned
@@ -246,37 +247,55 @@ def score_experience(candidate_years, candidate_titles, job):
     return base_score
 
 
-def score_role(candidate_titles, job_title):
+def score_role(candidate_titles, job_title, matched_skills):
+    """Measure role similarity and transferable technical skills."""
+
     candidate_text = " ".join(candidate_titles).lower()
-    job_title = job_title.lower()
+    job_text = job_title.lower()
 
     frontend_terms = ["frontend", "front-end", "ui developer"]
     backend_terms = ["backend", "back-end", "python developer"]
-    data_terms = ["data scientist", "data analyst"]
-    mobile_terms = ["mobile developer", "android developer", "ios developer"]
 
-    def get_family(text):
-        for family, terms in [
-            ("frontend", frontend_terms),
-            ("backend", backend_terms),
-            ("data", data_terms),
-            ("mobile", mobile_terms)
-        ]:
-            if any(term in text for term in terms):
-                return family
+    candidate_frontend = any(
+        term in candidate_text for term in frontend_terms
+    )
 
-        return None
+    candidate_backend = any(
+        term in candidate_text for term in backend_terms
+    )
 
-    candidate_family = get_family(candidate_text)
-    job_family = get_family(job_title)
+    job_frontend = any(
+        term in job_text for term in frontend_terms
+    )
 
-    if candidate_family and candidate_family == job_family:
-        return 20
+    job_backend = any(
+        term in job_text for term in backend_terms
+    )
 
-    if candidate_family and job_family:
-        return 5
+    if candidate_frontend and job_frontend:
+        base_score = 15
+    elif candidate_backend and job_backend:
+        base_score = 15
+    elif candidate_frontend and job_backend:
+        base_score = 5
+    else:
+        base_score = 10
 
-    return 10
+    # Reward transferable technical skills.
+    transferable_skills = {
+        "React.js",
+        "JavaScript",
+        "REST APIs",
+        "HTML5",
+        "CSS3",
+        "Git"
+    }
+
+    overlap = len(set(matched_skills) & transferable_skills)
+
+    bonus = min(overlap, 5)
+
+    return min(base_score + bonus, 15)
 
 
 def score_education(candidate_education, description):
@@ -297,14 +316,37 @@ def score_education(candidate_education, description):
         if term in description
     ]
 
-    # No explicit education requirement.
     if not required_education:
-        return 10
+        return 5
 
     if any(term in education_text for term in required_education):
-        return 10
+        return 5
 
-    return 3
+    return 1
+
+
+def remove_duplicate_jobs(jobs):
+    """Remove jobs with identical title, company and description."""
+
+    unique_jobs = []
+    seen = set()
+
+    for job in jobs:
+        title = (job.get("title") or "").strip().lower()
+        company = (job.get("company") or "").strip().lower()
+        description = (job.get("description") or "").strip().lower()
+
+        content = f"{title}|{company}|{description}"
+
+        fingerprint = hashlib.sha256(
+            content.encode("utf-8")
+        ).hexdigest()
+
+        if fingerprint not in seen:
+            seen.add(fingerprint)
+            unique_jobs.append(job)
+
+    return unique_jobs
 
 
 def match_jobs(candidate_profile, jobs):
@@ -325,7 +367,9 @@ def match_jobs(candidate_profile, jobs):
     candidate_titles = candidate_profile.get("job_titles", [])
     results = []
 
-    for job in jobs[:10]:
+    unique_jobs = remove_duplicate_jobs(jobs)
+
+    for job in unique_jobs[:10]:
 
         skill_score, matched, missing, optional_missing = score_skills(
             normalized_skills,
@@ -340,7 +384,8 @@ def match_jobs(candidate_profile, jobs):
 
         role_score = score_role(
             candidate_titles,
-            job.get("title") or ""
+            job.get("title") or "",
+            matched
         )
 
         education_score = score_education(
@@ -363,10 +408,10 @@ def match_jobs(candidate_profile, jobs):
             skill_explanation = "All detected job skills are matched."
 
         explanation = (
-            f"Skills: {skill_score}/40. "
+            f"Skills: {skill_score}/50. "
             f"Experience: {experience_score}/30. "
-            f"Role relevance: {role_score}/20. "
-            f"Education: {education_score}/10. "
+            f"Role relevance: {role_score}/15. "
+            f"Education: {education_score}/5. "
             f"{skill_explanation}"
         )
 
