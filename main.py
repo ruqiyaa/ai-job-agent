@@ -51,7 +51,7 @@ def analyze_resume(resume_text):
     """
 
     response = client.models.generate_content(
-        model="gemini-3.1-flash-lite",
+        model=os.getenv("GEMINI_MODEL"),
         contents=prompt,
         config={
             "response_mime_type": "application/json",
