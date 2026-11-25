@@ -106,16 +106,12 @@ def get_candidate(resume_filename):
         conn.close()
 
 
-def save_jobs(jobs, source="Adzuna"):
+def save_jobs(jobs):
     conn = sqlite3.connect(DB_PATH)
-
     saved_count = 0
 
     try:
         for job in jobs:
-            company = job.get("company") or {}
-            location = job.get("location") or {}
-
             cursor = conn.execute("""
                 INSERT OR IGNORE INTO jobs (
                     title, company, location,
@@ -124,11 +120,11 @@ def save_jobs(jobs, source="Adzuna"):
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (
                 job.get("title"),
-                company.get("display_name"),
-                location.get("display_name"),
+                job.get("company"),
+                job.get("location"),
                 job.get("description"),
-                job.get("redirect_url"),
-                source
+                job.get("job_url"),
+                job.get("source", "Unknown")
             ))
 
             saved_count += cursor.rowcount

@@ -1,13 +1,12 @@
-from db import (
-    init_db,
-    get_candidate,
-    save_jobs,
-    get_saved_jobs
-)
-from job_search import search_jobs
+
+from db import init_db, get_candidate, save_jobs, get_saved_jobs
+
+from job_sources.adzuna import search as search_adzuna
+from job_sources.remotive import search as search_remotive
+
 from matching import match_jobs
 
-# temp settingd
+
 RESUME_FILENAME = "ruqiya_cv.pdf"
 LOCATION = "India"
 
@@ -18,46 +17,56 @@ def run_agent(resume_filename, location):
     candidate = get_candidate(resume_filename)
 
     if not candidate:
-        raise ValueError("Candidate not found in db")
+        raise ValueError("Candidate resume not found in database.")
 
     profile = candidate["profile"]
     search_queries = profile.get("job_titles", [])
 
     if not search_queries:
-        raise ValueError("no job titles found in candidate profile")
+        raise ValueError("No job titles found in candidate profile.")
 
     print("\nJOB AGENT STARTED")
     print("Candidate:", profile["name"])
     print("Search queries:", search_queries)
 
     discovered_jobs = {}
+
     for keyword in search_queries:
-        print(f"\nSearching for: {keyword}")
+        print(f"\nSearching Adzuna: {keyword}")
 
-        results = search_jobs(keyword, location)
+        try:
+            results = search_adzuna(keyword, location)
 
-        for job in results:
-            url = job.get("redirect_url")
+            for job in results:
+                discovered_jobs[job["job_url"]] = job
 
-            if url:
-                discovered_jobs[url] = job
+        except Exception as error:
+            print("Adzuna search failed:", error)
+
+    for keyword in search_queries:
+        print(f"\nSearching Remotive: {keyword}")
+
+        try:
+            results = search_remotive(keyword)
+
+            for job in results:
+                discovered_jobs[job["job_url"]] = job
+
+        except Exception as error:
+            print("Remotive search failed:", error)
 
     jobs = list(discovered_jobs.values())
 
-    print(f"\nJobs discovered: {len(jobs)}")
+    print("\nTotal unique jobs discovered:", len(jobs))
 
     if not jobs:
         print("No jobs found.")
         return
 
-    # 4. Save discovered jobs
     saved_count = save_jobs(jobs)
+    print("New jobs saved:", saved_count)
 
-    print(f"New jobs saved: {saved_count}")
-
-    # 5. Retrieve matching jobs from database
     saved_jobs = get_saved_jobs()
-
     job_urls = set(discovered_jobs.keys())
 
     relevant_jobs = [
@@ -65,7 +74,6 @@ def run_agent(resume_filename, location):
         if job["job_url"] in job_urls
     ]
 
-    # 6. Match and rank
     matches = match_jobs(profile, relevant_jobs)
 
     matches.sort(
@@ -73,15 +81,19 @@ def run_agent(resume_filename, location):
         reverse=True
     )
 
-    # 7. Display results
     print("\n===== TOP JOB MATCHES =====")
 
-    for index, match in enumerate(matches, start=1):
+    for index, match in enumerate(matches[:10], start=1):
+        job = next(
+            (j for j in relevant_jobs if j["id"] == match["job_id"]),
+            {}
+        )
+
         print(f"\n{index}. {match['title']}")
         print("Company:", match["company"])
+        print("Source:", job.get("source"))
         print("Match score:", match["match_score"], "/100")
-        print("Matched skills:", match["matched_skills"])
-        print("Missing skills:", match["missing_skills"])
+        print("Job link:", job.get("job_url"))
 
     print("\nJOB AGENT FINISHED")
 
